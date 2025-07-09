@@ -8,7 +8,7 @@ import * as tf from "@tensorflow/tfjs-node-gpu";
 
 import { CLASSES as WALDO_CLASSES } from "./classes";
 
-const MODEL_PATH =  "./models/WALDO30_yolov8n_640x640/model.json";
+const MODEL_PATH = "./models/WALDO30_yolov8n_640x640/model.json";
 const SIZE = 640;
 
 export const CLASSES = WALDO_CLASSES;
@@ -25,7 +25,10 @@ export interface ModelConfig {
 }
 
 export async function load(config: ModelConfig = {}) {
-  const objectDetection = new WaldoObjectDetection(config.modelUrl, config.gpuMemoryGrowth);
+  const objectDetection = new WaldoObjectDetection(
+    config.modelUrl,
+    config.gpuMemoryGrowth,
+  );
   await objectDetection.load();
   return objectDetection;
 }
@@ -46,23 +49,23 @@ export class WaldoObjectDetection {
 
       // CUDA GPU 백엔드 설정
       await tf.ready();
-      
+
       // GPU 메모리 증가 설정 (선택사항)
       if (this.gpuMemoryGrowth) {
         const gpuBackend = tf.backend();
-        if (gpuBackend && 'gpuKernelBackend' in gpuBackend) {
+        if (gpuBackend && "gpuKernelBackend" in gpuBackend) {
           // GPU 메모리 설정은 TensorFlow.js Node.js에서 자동으로 관리됨
-          console.log('GPU backend initialized');
+          console.log("GPU backend initialized");
         }
       }
 
-      this.model = await tf.loadGraphModel(tf.io.fileSystem(this.modelPath) );
-      
+      this.model = await tf.loadGraphModel(tf.io.fileSystem(this.modelPath));
+
       // 백엔드 정보 출력
-      console.log('Current backend:', tf.getBackend());
-      console.log('Memory info:', tf.memory());
+      console.log("Current backend:", tf.getBackend());
+      console.log("Memory info:", tf.memory());
     } catch (error) {
-      console.error('Error loading model:', error);
+      console.error("Error loading model:", error);
       throw error;
     }
   }
@@ -70,36 +73,45 @@ export class WaldoObjectDetection {
   private base64ToImageTensor(base64String: string): tf.Tensor3D {
     try {
       // base64 문자열에서 데이터 URL 프리픽스 제거
-      const base64Data = base64String.replace(/^data:image\/[a-z]+;base64,/, '');
+      const base64Data = base64String.replace(
+        /^data:image\/[a-z]+;base64,/,
+        "",
+      );
       // base64를 Buffer로 변환
-      const imageBuffer = Buffer.from(base64Data, 'base64');
+      const imageBuffer = Buffer.from(base64Data, "base64");
       // Buffer를 이미지 텐서로 디코딩
       const imageTensor = tf.node.decodeImage(imageBuffer, 3) as tf.Tensor3D;
-      
+
       return imageTensor;
     } catch (error) {
-      console.error('Error processing base64 image:', error);
-      throw new Error('Failed to process base64 image');
+      console.error("Error processing base64 image:", error);
+      throw new Error("Failed to process base64 image");
     }
   }
 
-  private preprocessImage(imageTensor: tf.Tensor3D ): tf.Tensor4D {
+  private preprocessImage(imageTensor: tf.Tensor3D): tf.Tensor4D {
     return tf.tidy(() => {
       // 이미지 크기 조정
       imageTensor = tf.image.resizeBilinear(imageTensor, [SIZE, SIZE]);
-      
+
       // 정규화 (0-255 -> 0-1)
       imageTensor = tf.div(imageTensor, 255.0);
-      
+
       // 배치 차원 추가
       const batchTensor = tf.expandDims(imageTensor, 0) as tf.Tensor4D;
-      
+
       return batchTensor;
     });
   }
 
-  private nms(boxes: number[][], scores: number[], iouThreshold: number = 0.4): number[] {
-    const indices = Array.from(Array(scores.length).keys()).sort((a, b) => scores[b] - scores[a]);
+  private nms(
+    boxes: number[][],
+    scores: number[],
+    iouThreshold: number = 0.4,
+  ): number[] {
+    const indices = Array.from(Array(scores.length).keys()).sort(
+      (a, b) => scores[b] - scores[a],
+    );
     const keep: number[] = [];
 
     while (indices.length > 0) {
@@ -114,7 +126,7 @@ export class WaldoObjectDetection {
           const box = boxes[idx];
           const iou = this.calculateIoU(currentBox, box);
           return iou <= iouThreshold;
-        })
+        }),
       );
     }
 
@@ -141,7 +153,7 @@ export class WaldoObjectDetection {
     originalWidth: number,
     originalHeight: number,
     maxNumBoxes: number,
-    minScore: number
+    minScore: number,
   ): DetectedObject[] {
     const data = output.dataSync() as Float32Array;
     const [, numClasses, numBoxes] = output.shape;
@@ -199,50 +211,55 @@ export class WaldoObjectDetection {
   async detect(
     base64Image: string,
     maxNumBoxes = Infinity,
-    minScore = 0.5
+    minScore = 0.5,
   ): Promise<DetectedObject[]> {
     if (!this.model) {
       throw new Error("Model not loaded. Call load() first.");
     }
 
     try {
-
       let results: DetectedObject[] = [];
 
       // tf.tidy를 사용하여 메모리 누수 방지
       tf.tidy(() => {
-        console.time('detect')
-        console.group('detect')
+        console.time("detect");
+        console.group("detect");
 
         // 원본 이미지 크기 획득을 위한 임시 텐서 생성
-        console.time('image2tensor')
+        console.time("image2tensor");
         const originalImageTensor = this.base64ToImageTensor(base64Image);
         const originalHeight = originalImageTensor.shape[0];
         const originalWidth = originalImageTensor.shape[1];
-        console.timeEnd('image2tensor')
+        console.timeEnd("image2tensor");
 
         // console.time('preprocess')
         const inputTensor = this.preprocessImage(originalImageTensor);
         // console.timeEnd('preprocess')
-      
-        console.time('predict')
+
+        console.time("predict");
         const prediction = this.model!.predict(inputTensor) as tf.Tensor;
-        console.timeEnd('predict')
-    
+        console.timeEnd("predict");
+
         // console.time('postprocess')
-        results = this.postprocess(prediction, originalWidth, originalHeight, maxNumBoxes, minScore);
+        results = this.postprocess(
+          prediction,
+          originalWidth,
+          originalHeight,
+          maxNumBoxes,
+          minScore,
+        );
         // console.timeEnd('postprocess')
-      
-        console.groupEnd()
-        console.timeEnd('detect')
-        console.log()
+
+        console.groupEnd();
+        console.timeEnd("detect");
+        console.log();
 
         // 텐서들은 tf.tidy에 의해 자동으로 정리됨
       });
 
       return results;
     } catch (error) {
-      console.error('Error during detection:', error);
+      console.error("Error during detection:", error);
       throw error;
     }
   }
@@ -250,20 +267,20 @@ export class WaldoObjectDetection {
   async detectBatch(
     base64Images: string[],
     maxNumBoxes = Infinity,
-    minScore = 0.5
+    minScore = 0.5,
   ): Promise<DetectedObject[][]> {
     if (!this.model) {
       throw new Error("Model not loaded. Call load() first.");
     }
 
     const results: DetectedObject[][] = [];
-    
+
     for (const base64Image of base64Images) {
       try {
         const detection = await this.detect(base64Image, maxNumBoxes, minScore);
         results.push(detection);
       } catch (error) {
-        console.error('Error detecting image in batch:', error);
+        console.error("Error detecting image in batch:", error);
         results.push([]); // 에러 발생 시 빈 배열 추가
       }
     }
