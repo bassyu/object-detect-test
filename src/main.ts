@@ -20,8 +20,6 @@ async function main() {
   }
   console.groupEnd()
   console.timeEnd('all')
-
-  
 }
 
 main();
