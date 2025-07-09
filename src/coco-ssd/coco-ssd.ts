@@ -1,31 +1,14 @@
-/**
- * @license
- * Copyright 2019 Google LLC. All Rights Reserved.
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- * =============================================================================
- */
+import * as tf from '@tensorflow/tfjs-node-gpu';
+import * as tfconv from '@tensorflow/tfjs-converter';
 
-import * as tf from "@tensorflow/tfjs";
-import * as tfconv from "@tensorflow/tfjs-converter";
+import { CLASSES as COCO_CLASSES } from './classes';
 
-import { CLASSES as COCO_CLASSES } from "./classes";
-
-const BASE_PATH = "https://storage.googleapis.com/tfjs-models/savedmodel/";
+const BASE_PATH = 'https://storage.googleapis.com/tfjs-models/savedmodel/';
 
 export const CLASSES = COCO_CLASSES;
 
 /** @docinline */
-export type ObjectDetectionBaseModel = "mobilenet_v1" | "mobilenet_v2" | "lite_mobilenet_v2";
+export type ObjectDetectionBaseModel = 'mobilenet_v1' | 'mobilenet_v2' | 'lite_mobilenet_v2';
 
 export interface DetectedObject {
   bbox: [number, number, number, number]; // [x, y, width, height]
@@ -49,58 +32,102 @@ export interface ModelConfig {
    * for area/countries that don't have access to the model hosted on GCP.
    */
   modelUrl?: string;
+  /**
+   * Optional GPU memory growth setting
+   */
+  gpuMemoryGrowth?: boolean;
 }
 
-export async function load(config: ModelConfig = {}) {
+export async function loadCocoSsd(config: ModelConfig = {}) {
   if (tf == null) {
     throw new Error(
       `Cannot find TensorFlow.js. If you are using a <script> tag, please ` +
-        `also include @tensorflow/tfjs on the page before using this model.`
+        `also include @tensorflow/tfjs on the page before using this model.`,
     );
   }
-  const base = config.base ?? "lite_mobilenet_v2";
+  const base = config.base ?? 'lite_mobilenet_v2';
   const modelUrl = config.modelUrl;
-  if (!["mobilenet_v1", "mobilenet_v2", "lite_mobilenet_v2"].includes(base)) {
+  const gpuMemoryGrowth = config.gpuMemoryGrowth ?? true;
+
+  if (!['mobilenet_v1', 'mobilenet_v2', 'lite_mobilenet_v2'].includes(base)) {
     throw new Error(
       `ObjectDetection constructed with invalid base model ` +
         `${base}. Valid names are 'mobilenet_v1',` +
-        ` 'mobilenet_v2' and 'lite_mobilenet_v2'.`
+        ` 'mobilenet_v2' and 'lite_mobilenet_v2'.`,
     );
   }
 
-  const objectDetection = new ObjectDetection(base, modelUrl);
+  const objectDetection = new ObjectDetection(base, modelUrl, gpuMemoryGrowth);
   await objectDetection.load();
   return objectDetection;
 }
 
 export class ObjectDetection {
   private modelPath: string;
-  private model: tfconv.GraphModel;
+  private model: tfconv.GraphModel | null = null;
+  private gpuMemoryGrowth: boolean;
 
-  constructor(base: ObjectDetectionBaseModel, modelUrl?: string) {
+  constructor(base: ObjectDetectionBaseModel, modelUrl?: string, gpuMemoryGrowth = true) {
     this.modelPath = modelUrl ?? `${BASE_PATH}${this.getPrefix(base)}/model.json`;
+    this.gpuMemoryGrowth = gpuMemoryGrowth;
   }
 
   private getPrefix(base: ObjectDetectionBaseModel) {
-    return base === "lite_mobilenet_v2" ? `ssd${base}` : `ssd_${base}`;
+    return base === 'lite_mobilenet_v2' ? `ssd${base}` : `ssd_${base}`;
   }
 
   async load() {
-    this.model = await tfconv.loadGraphModel(this.modelPath);
+    try {
+      // GPU 백엔드 설정
+      await tf.ready();
 
-    const zeroTensor = tf.zeros([1, 300, 300, 3], "int32");
-    // Warmup the model.
-    const result = (await this.model.executeAsync(zeroTensor)) as tf.Tensor[];
-    await Promise.all(result.map((t) => t.data()));
-    result.map((t) => t.dispose());
-    zeroTensor.dispose();
+      // GPU 메모리 증가 설정 (선택사항)
+      if (this.gpuMemoryGrowth) {
+        const gpuBackend = tf.backend();
+        if (gpuBackend && 'gpuKernelBackend' in gpuBackend) {
+          // GPU 메모리 설정은 TensorFlow.js Node.js에서 자동으로 관리됨
+          console.log('GPU backend initialized');
+        }
+      }
+
+      this.model = await tfconv.loadGraphModel(this.modelPath);
+
+      // 백엔드 정보 출력
+      console.log('Current backend:', tf.getBackend());
+      console.log('Memory info:', tf.memory());
+
+      // 모델 워밍업
+      const zeroTensor = tf.zeros([1, 300, 300, 3], 'int32');
+      const result = (await this.model.executeAsync(zeroTensor)) as tf.Tensor[];
+      await Promise.all(result.map((t) => t.data()));
+      result.map((t) => t.dispose());
+      zeroTensor.dispose();
+    } catch (error) {
+      console.error('Error loading model:', error);
+      throw error;
+    }
+  }
+
+  private base64ToImageTensor(base64String: string): tf.Tensor3D {
+    try {
+      // base64 문자열에서 데이터 URL 프리픽스 제거
+      const base64Data = base64String.replace(/^data:image\/[a-z]+;base64,/, '');
+      // base64를 Buffer로 변환
+      const imageBuffer = Buffer.from(base64Data, 'base64');
+      // Buffer를 이미지 텐서로 디코딩
+      const imageTensor = tf.node.decodeImage(imageBuffer, 3) as tf.Tensor3D;
+
+      return imageTensor;
+    } catch (error) {
+      console.error('Error processing base64 image:', error);
+      throw new Error('Failed to process base64 image');
+    }
   }
 
   /**
    * Infers through the model.
    *
-   * @param img The image to classify. Can be a tensor or a DOM element image,
-   * video, or canvas.
+   * @param base64Image The base64 encoded image string to classify
    * @param maxNumBoxes The maximum number of bounding boxes of detected
    * objects. There can be multiple objects of the same class, but at different
    * locations. Defaults to 20.
@@ -108,55 +135,73 @@ export class ObjectDetection {
    * of detected objects. Value between 0 and 1. Defaults to 0.5.
    */
   private async infer(
-    img: tf.Tensor3D | ImageData | HTMLImageElement | HTMLCanvasElement | HTMLVideoElement,
+    base64Image: string,
     maxNumBoxes: number,
-    minScore: number
+    minScore: number,
   ): Promise<DetectedObject[]> {
-    const batched = tf.tidy(() => {
-      if (!(img instanceof tf.Tensor)) {
-        img = tf.browser.fromPixels(img);
+    return new Promise((resolve, reject) => {
+      try {
+        let results: DetectedObject[] = [];
+
+        // tf.tidy를 사용하여 메모리 누수 방지
+        tf.tidy(() => {
+          // base64를 텐서로 변환
+          const imageTensor = this.base64ToImageTensor(base64Image);
+
+          // 배치 차원 추가
+          const batched = tf.expandDims(imageTensor, 0);
+
+          const height = batched.shape[1];
+          const width = batched.shape[2];
+
+          // 동기적으로 예측 수행
+          const result = this.model!.predict(batched) as tf.Tensor[];
+
+          const scores = result[0].dataSync() as Float32Array;
+          const boxes = result[1].dataSync() as Float32Array;
+
+          const [maxScores, classes] = this.calculateMaxScores(
+            scores,
+            result[0].shape[1] ?? 0,
+            result[0].shape[2] ?? 0,
+          );
+
+          const prevBackend = tf.getBackend();
+          // run post process in cpu
+          if (tf.getBackend() === 'webgl') {
+            tf.setBackend('cpu');
+          }
+
+          const indexTensor = tf.tidy(() => {
+            const boxes2 = tf.tensor2d(boxes, [result[1].shape[1] ?? 0, result[1].shape[3] ?? 0]);
+            return tf.image.nonMaxSuppression(boxes2, maxScores, maxNumBoxes, minScore, minScore);
+          });
+
+          const indexes = indexTensor.dataSync() as Float32Array;
+
+          // restore previous backend
+          if (prevBackend !== tf.getBackend()) {
+            tf.setBackend(prevBackend);
+          }
+
+          results = this.buildDetectedObjects(
+            width ?? 0,
+            height ?? 0,
+            boxes,
+            maxScores,
+            indexes,
+            classes,
+          );
+
+          // 텐서들은 tf.tidy에 의해 자동으로 정리됨
+        });
+
+        resolve(results);
+      } catch (error) {
+        console.error('Error during inference:', error);
+        reject(error);
       }
-      // Reshape to a single-element batch so we can pass it to executeAsync.
-      return tf.expandDims(img);
     });
-    const height = batched.shape[1];
-    const width = batched.shape[2];
-
-    // model returns two tensors:
-    // 1. box classification score with shape of [1, 1917, 90]
-    // 2. box location with shape of [1, 1917, 1, 4]
-    // where 1917 is the number of box detectors, 90 is the number of classes.
-    // and 4 is the four coordinates of the box.
-    const result = (await this.model.executeAsync(batched)) as tf.Tensor[];
-
-    const scores = result[0].dataSync() as Float32Array;
-    const boxes = result[1].dataSync() as Float32Array;
-
-    // clean the webgl tensors
-    batched.dispose();
-    tf.dispose(result);
-
-    const [maxScores, classes] = this.calculateMaxScores(scores, result[0].shape[1] ?? 0, result[0].shape[2] ?? 0);
-
-    const prevBackend = tf.getBackend();
-    // run post process in cpu
-    if (tf.getBackend() === "webgl") {
-      void tf.setBackend("cpu");
-    }
-    const indexTensor = tf.tidy(() => {
-      const boxes2 = tf.tensor2d(boxes, [result[1].shape[1] ?? 0, result[1].shape[3] ?? 0]);
-      return tf.image.nonMaxSuppression(boxes2, maxScores, maxNumBoxes, minScore, minScore);
-    });
-
-    const indexes = indexTensor.dataSync() as Float32Array;
-    indexTensor.dispose();
-
-    // restore previous backend
-    if (prevBackend !== tf.getBackend()) {
-      void tf.setBackend(prevBackend);
-    }
-
-    return this.buildDetectedObjects(width ?? 0, height ?? 0, boxes, maxScores, indexes, classes);
   }
 
   private buildDetectedObjects(
@@ -165,7 +210,7 @@ export class ObjectDetection {
     boxes: Float32Array,
     scores: number[],
     indexes: Float32Array,
-    classes: number[]
+    classes: number[],
   ): DetectedObject[] {
     const count = indexes.length;
     const objects: DetectedObject[] = [];
@@ -191,7 +236,11 @@ export class ObjectDetection {
     return objects;
   }
 
-  private calculateMaxScores(scores: Float32Array, numBoxes: number, numClasses: number): [number[], number[]] {
+  private calculateMaxScores(
+    scores: Float32Array,
+    numBoxes: number,
+    numClasses: number,
+  ): [number[], number[]] {
     const maxes: number[] = [];
     const classes: number[] = [];
     for (let i = 0; i < numBoxes; i++) {
@@ -210,23 +259,18 @@ export class ObjectDetection {
   }
 
   /**
-   * Detect objects for an image returning a list of bounding boxes with
+   * Detect objects for a base64 encoded image returning a list of bounding boxes with
    * associated class and score.
    *
-   * @param img The image to detect objects from. Can be a tensor or a DOM
-   *     element image, video, or canvas.
+   * @param base64Image The base64 encoded image string to detect objects from
    * @param maxNumBoxes The maximum number of bounding boxes of detected
    * objects. There can be multiple objects of the same class, but at different
    * locations. Defaults to 20.
    * @param minScore The minimum score of the returned bounding boxes
    * of detected objects. Value between 0 and 1. Defaults to 0.5.
    */
-  async detect(
-    img: tf.Tensor3D | ImageData | HTMLImageElement | HTMLCanvasElement | HTMLVideoElement,
-    maxNumBoxes = 20,
-    minScore = 0.5
-  ): Promise<DetectedObject[]> {
-    return this.infer(img, maxNumBoxes, minScore);
+  async detect(base64Image: string, maxNumBoxes = 20, minScore = 0.5): Promise<DetectedObject[]> {
+    return this.infer(base64Image, maxNumBoxes, minScore);
   }
 
   /**
@@ -237,5 +281,7 @@ export class ObjectDetection {
     if (this.model != null) {
       this.model.dispose();
     }
+    // 메모리 정리
+    tf.disposeVariables();
   }
 }

@@ -1,14 +1,9 @@
-/**
- * WALDO Object Detection using TensorFlow.js for Node.js with CUDA GPU
- * Adapted from browser version to work with base64 image inputs
- */
-
-import * as tf from "@tensorflow/tfjs-node-gpu";
+import * as tf from '@tensorflow/tfjs-node-gpu';
 // import * as tf from "@tensorflow/tfjs-node";
 
-import { CLASSES as WALDO_CLASSES } from "./classes";
+import { CLASSES as WALDO_CLASSES } from './classes';
 
-const MODEL_PATH = "./src/waldo/WALDO30_yolov8n_640x640/model.json";
+const MODEL_PATH = './src/waldo/WALDO30_yolov8n_640x640/model.json';
 const SIZE = 640;
 
 export const CLASSES = WALDO_CLASSES;
@@ -24,11 +19,8 @@ export interface ModelConfig {
   gpuMemoryGrowth?: boolean;
 }
 
-export async function load(config: ModelConfig = {}) {
-  const objectDetection = new WaldoObjectDetection(
-    config.modelUrl,
-    config.gpuMemoryGrowth,
-  );
+export async function loadWaldo(config: ModelConfig = {}) {
+  const objectDetection = new WaldoObjectDetection(config.modelUrl, config.gpuMemoryGrowth);
   await objectDetection.load();
   return objectDetection;
 }
@@ -214,7 +206,7 @@ export class WaldoObjectDetection {
     minScore = 0.5,
   ): Promise<DetectedObject[]> {
     if (!this.model) {
-      throw new Error("Model not loaded. Call load() first.");
+      throw new Error('Model not loaded. Call load() first.');
     }
 
     try {
@@ -222,23 +214,23 @@ export class WaldoObjectDetection {
 
       // tf.tidy를 사용하여 메모리 누수 방지
       tf.tidy(() => {
-        console.time("detect");
-        console.group("detect");
+        console.time('detect');
+        console.group('detect');
 
         // 원본 이미지 크기 획득을 위한 임시 텐서 생성
-        console.time("image2tensor");
+        console.time('image2tensor');
         const originalImageTensor = this.base64ToImageTensor(base64Image);
         const originalHeight = originalImageTensor.shape[0];
         const originalWidth = originalImageTensor.shape[1];
-        console.timeEnd("image2tensor");
+        console.timeEnd('image2tensor');
 
         // console.time('preprocess')
         const inputTensor = this.preprocessImage(originalImageTensor);
         // console.timeEnd('preprocess')
 
-        console.time("predict");
+        console.time('predict');
         const prediction = this.model!.predict(inputTensor) as tf.Tensor;
-        console.timeEnd("predict");
+        console.timeEnd('predict');
 
         // console.time('postprocess')
         results = this.postprocess(
@@ -251,7 +243,7 @@ export class WaldoObjectDetection {
         // console.timeEnd('postprocess')
 
         console.groupEnd();
-        console.timeEnd("detect");
+        console.timeEnd('detect');
         console.log();
 
         // 텐서들은 tf.tidy에 의해 자동으로 정리됨
@@ -270,7 +262,7 @@ export class WaldoObjectDetection {
     minScore = 0.5,
   ): Promise<DetectedObject[][]> {
     if (!this.model) {
-      throw new Error("Model not loaded. Call load() first.");
+      throw new Error('Model not loaded. Call load() first.');
     }
 
     const results: DetectedObject[][] = [];
@@ -290,7 +282,7 @@ export class WaldoObjectDetection {
 
   getModelInfo(): object {
     if (!this.model) {
-      throw new Error("Model not loaded. Call load() first.");
+      throw new Error('Model not loaded. Call load() first.');
     }
 
     return {
