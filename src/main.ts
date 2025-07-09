@@ -1,5 +1,5 @@
 import fs from "fs";
-import { load } from "./waldo";
+import { load } from "./waldo/waldo";
 
 const PATH = "./mock-images/mock1.png";
 

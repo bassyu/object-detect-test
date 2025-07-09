@@ -8,7 +8,7 @@ import * as tf from "@tensorflow/tfjs-node-gpu";
 
 import { CLASSES as WALDO_CLASSES } from "./classes";
 
-const MODEL_PATH = "./models/WALDO30_yolov8n_640x640/model.json";
+const MODEL_PATH = "./src/waldo/WALDO30_yolov8n_640x640/model.json";
 const SIZE = 640;
 
 export const CLASSES = WALDO_CLASSES;
