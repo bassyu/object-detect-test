@@ -1,0 +1,30 @@
+{
+  "name": "object-detect-test",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bassyu/object-detect-test.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/bassyu/object-detect-test/issues"
+  },
+  "homepage": "https://github.com/bassyu/object-detect-test#readme",
+  "description": "",
+  "devDependencies": {
+    "@types/node": "^24.0.12"
+  },
+  "dependencies": {
+    "@tensorflow/tfjs-node": "^4.22.0",
+    "@tensorflow/tfjs-node-gpu": "^4.22.0",
+    "es-toolkit": "^1.39.7",
+    "prettier": "^3.6.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}
