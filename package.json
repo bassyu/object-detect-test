@@ -5,7 +5,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "push": "GIT_SSH_COMMAND=\"ssh -i ~/.ssh/bassyu\" git push origin main",
-    "start": "npx ts-node ./src/main.ts"
+    "start": "npx ts-node ./src/main.ts",
+    "docker-build": "docker build . -t object-detect-test",
+    "docker-start": "docker run --gpus all object-detect-test:latest"
   },
   "repository": {
     "type": "git",

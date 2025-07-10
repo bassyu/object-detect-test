@@ -8,20 +8,22 @@ async function main() {
   const buf = fs.readFileSync(PATH);
   const imageDataUrl = buf.toString('base64');
 
-  const [waldo, cocoSsd] = await Promise.all([loadWaldo(), loadCocoSsd()]);
+  const model = await loadWaldo();
+  // const model = await loadCocoSsd();
 
   console.time('all');
   console.group('all');
-  for (let i = 0; i < 20; i += 1) {
-    // console.time('function')
-    // console.group('function')
 
-    waldo.detect(imageDataUrl);
-    // cocoSsd.detect(imageDataUrl);
-
-    // console.groupEnd()
-    // console.timeEnd('function')
+  for (let i = 0; i < 4; i += 1) {
+    await model.detect(imageDataUrl);
   }
+
+  // await Promise.all(
+  //   Array(200)
+  //     .fill(null)
+  //     .map(() => model.detect(imageDataUrl)),
+  // );
+
   console.groupEnd();
   console.timeEnd('all');
 }

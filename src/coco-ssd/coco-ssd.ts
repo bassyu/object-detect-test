@@ -1,4 +1,5 @@
 import * as tf from '@tensorflow/tfjs-node-gpu';
+// import * as tf from '@tensorflow/tfjs-node';
 import * as tfconv from '@tensorflow/tfjs-converter';
 
 import { CLASSES as COCO_CLASSES } from './classes';
@@ -124,84 +125,69 @@ export class ObjectDetection {
     }
   }
 
-  /**
-   * Infers through the model.
-   *
-   * @param base64Image The base64 encoded image string to classify
-   * @param maxNumBoxes The maximum number of bounding boxes of detected
-   * objects. There can be multiple objects of the same class, but at different
-   * locations. Defaults to 20.
-   * @param minScore The minimum score of the returned bounding boxes
-   * of detected objects. Value between 0 and 1. Defaults to 0.5.
-   */
   private async infer(
     base64Image: string,
     maxNumBoxes: number,
     minScore: number,
   ): Promise<DetectedObject[]> {
-    return new Promise((resolve, reject) => {
-      try {
-        let results: DetectedObject[] = [];
+    try {
+      // console.time('detect');
+      // console.group('detect');
 
-        // tf.tidy를 사용하여 메모리 누수 방지
-        tf.tidy(() => {
-          // base64를 텐서로 변환
-          const imageTensor = this.base64ToImageTensor(base64Image);
+      // console.time('image2tensor');
+      const imageTensor = this.base64ToImageTensor(base64Image);
+      // console.timeEnd('image2tensor');
 
-          // 배치 차원 추가
-          const batched = tf.expandDims(imageTensor, 0);
+      const batched = tf.expandDims(imageTensor, 0);
 
-          const height = batched.shape[1];
-          const width = batched.shape[2];
+      const height = batched.shape[1];
+      const width = batched.shape[2];
 
-          // 동기적으로 예측 수행
-          const result = this.model!.predict(batched) as tf.Tensor[];
+      // console.time('predict');
+      const result = (await this.model!.executeAsync(batched)) as tf.Tensor[];
+      // console.timeEnd('predict');
 
-          const scores = result[0].dataSync() as Float32Array;
-          const boxes = result[1].dataSync() as Float32Array;
+      const scores = result[0].dataSync() as Float32Array;
+      const boxes = result[1].dataSync() as Float32Array;
 
-          const [maxScores, classes] = this.calculateMaxScores(
-            scores,
-            result[0].shape[1] ?? 0,
-            result[0].shape[2] ?? 0,
-          );
+      batched.dispose();
+      imageTensor.dispose();
 
-          const prevBackend = tf.getBackend();
-          // run post process in cpu
-          if (tf.getBackend() === 'webgl') {
-            tf.setBackend('cpu');
-          }
+      const [maxScores, classes] = this.calculateMaxScores(
+        scores,
+        result[0].shape[1] ?? 0,
+        result[0].shape[2] ?? 0,
+      );
 
-          const indexTensor = tf.tidy(() => {
-            const boxes2 = tf.tensor2d(boxes, [result[1].shape[1] ?? 0, result[1].shape[3] ?? 0]);
-            return tf.image.nonMaxSuppression(boxes2, maxScores, maxNumBoxes, minScore, minScore);
-          });
+      const indexTensor = tf.tidy(() => {
+        const boxes2 = tf.tensor2d(boxes, [result[1].shape[1] ?? 0, result[1].shape[3] ?? 0]);
+        return tf.image.nonMaxSuppression(boxes2, maxScores, maxNumBoxes, minScore, minScore);
+      });
 
-          const indexes = indexTensor.dataSync() as Float32Array;
+      const indexes = indexTensor.dataSync() as Float32Array;
+      indexTensor.dispose();
 
-          // restore previous backend
-          if (prevBackend !== tf.getBackend()) {
-            tf.setBackend(prevBackend);
-          }
+      const results = this.buildDetectedObjects(
+        width ?? 0,
+        height ?? 0,
+        boxes,
+        maxScores,
+        indexes,
+        classes,
+      );
 
-          results = this.buildDetectedObjects(
-            width ?? 0,
-            height ?? 0,
-            boxes,
-            maxScores,
-            indexes,
-            classes,
-          );
+      // console.groupEnd();
+      // console.timeEnd('detect');
+      // console.log();
 
-          // 텐서들은 tf.tidy에 의해 자동으로 정리됨
-        });
+      // result 텐서들 정리
+      result.forEach((tensor) => tensor.dispose());
 
-        resolve(results);
-      } catch (error) {
-        console.error('Error during inference:', error);
-        reject(error);
-      }
-    });
+      return results;
+    } catch (error) {
+      console.error('Error during inference:', error);
+      throw error;
+    }
   }
 
   private buildDetectedObjects(
@@ -258,25 +244,10 @@ export class ObjectDetection {
     return [maxes, classes];
   }
 
-  /**
-   * Detect objects for a base64 encoded image returning a list of bounding boxes with
-   * associated class and score.
-   *
-   * @param base64Image The base64 encoded image string to detect objects from
-   * @param maxNumBoxes The maximum number of bounding boxes of detected
-   * objects. There can be multiple objects of the same class, but at different
-   * locations. Defaults to 20.
-   * @param minScore The minimum score of the returned bounding boxes
-   * of detected objects. Value between 0 and 1. Defaults to 0.5.
-   */
   async detect(base64Image: string, maxNumBoxes = 20, minScore = 0.5): Promise<DetectedObject[]> {
     return this.infer(base64Image, maxNumBoxes, minScore);
   }
 
-  /**
-   * Dispose the tensors allocated by the model. You should call this when you
-   * are done with the model.
-   */
   dispose() {
     if (this.model != null) {
       this.model.dispose();

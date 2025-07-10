@@ -1,5 +1,5 @@
 import * as tf from '@tensorflow/tfjs-node-gpu';
-// import * as tf from "@tensorflow/tfjs-node";
+// import * as tf from '@tensorflow/tfjs-node';
 
 import { CLASSES as WALDO_CLASSES } from './classes';
 
@@ -210,44 +210,38 @@ export class WaldoObjectDetection {
     }
 
     try {
-      let results: DetectedObject[] = [];
+      console.time('detect');
+      console.group('detect');
 
-      // tf.tidy를 사용하여 메모리 누수 방지
-      tf.tidy(() => {
-        console.time('detect');
-        console.group('detect');
+      // 원본 이미지 크기 획득을 위한 임시 텐서 생성
+      console.time('image2tensor');
+      const originalImageTensor = this.base64ToImageTensor(base64Image);
+      const originalHeight = originalImageTensor.shape[0];
+      const originalWidth = originalImageTensor.shape[1];
+      console.timeEnd('image2tensor');
 
-        // 원본 이미지 크기 획득을 위한 임시 텐서 생성
-        console.time('image2tensor');
-        const originalImageTensor = this.base64ToImageTensor(base64Image);
-        const originalHeight = originalImageTensor.shape[0];
-        const originalWidth = originalImageTensor.shape[1];
-        console.timeEnd('image2tensor');
+      const inputTensor = this.preprocessImage(originalImageTensor);
 
-        // console.time('preprocess')
-        const inputTensor = this.preprocessImage(originalImageTensor);
-        // console.timeEnd('preprocess')
+      console.time('predict');
+      const prediction = this.model!.execute(inputTensor) as tf.Tensor;
+      console.timeEnd('predict');
 
-        console.time('predict');
-        const prediction = this.model!.predict(inputTensor) as tf.Tensor;
-        console.timeEnd('predict');
+      const results = this.postprocess(
+        prediction,
+        originalWidth,
+        originalHeight,
+        maxNumBoxes,
+        minScore,
+      );
 
-        // console.time('postprocess')
-        results = this.postprocess(
-          prediction,
-          originalWidth,
-          originalHeight,
-          maxNumBoxes,
-          minScore,
-        );
-        // console.timeEnd('postprocess')
+      console.groupEnd();
+      console.timeEnd('detect');
+      console.log();
 
-        console.groupEnd();
-        console.timeEnd('detect');
-        console.log();
-
-        // 텐서들은 tf.tidy에 의해 자동으로 정리됨
-      });
+      // 수동으로 텐서들을 정리
+      originalImageTensor.dispose();
+      inputTensor.dispose();
+      prediction.dispose();
 
       return results;
     } catch (error) {
