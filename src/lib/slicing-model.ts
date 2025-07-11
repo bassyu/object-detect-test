@@ -1,4 +1,4 @@
-import { createCanvas, loadImage } from 'canvas';
+import * as tf from '@tensorflow/tfjs-node-gpu';
 
 export interface DetectedObject {
   bbox: [number, number, number, number]; // [x, y, width, height]
@@ -7,7 +7,7 @@ export interface DetectedObject {
 }
 
 interface ImageSlice {
-  imageData: string; // base64
+  imageTensor: tf.Tensor3D; // tensor 슬라이스
   offsetX: number; // 전체 이미지에서의 x 좌표
   offsetY: number; // 전체 이미지에서의 y 좌표
 }
@@ -30,10 +30,10 @@ export class SlicingModel {
     this.nmsThreshold = parms.nmsThreshold ?? 0.5;
   }
 
-  async detect(imageDataUrl: string): Promise<DetectedObject[]> {
+  async detect(imageTensor: tf.Tensor3D): Promise<DetectedObject[]> {
     // 1. 이미지 슬라이싱
-    const slices = await this.sliceImage(imageDataUrl);
-    console.log('length', slices.length);
+    const slices = await this.sliceImage(imageTensor);
+    console.log('length: ', slices.length);
 
     // 2. 각 슬라이스에 모델 적용
     const allDetections = await this.detectOnSlices(slices);
@@ -44,11 +44,8 @@ export class SlicingModel {
     return finalDetections;
   }
 
-  private async sliceImage(imageDataUrl: string): Promise<ImageSlice[]> {
-    const img = await loadImage(`data:image/jpeg;base64,${imageDataUrl}`);
-
-    const imgWidth = img.width;
-    const imgHeight = img.height;
+  private async sliceImage(imageTensor: tf.Tensor3D): Promise<ImageSlice[]> {
+    const [imgHeight, imgWidth, channels] = imageTensor.shape;
 
     // 오버랩 계산
     const overlap = Math.floor(this.sliceSize * this.overlapRatio);
@@ -58,31 +55,20 @@ export class SlicingModel {
 
     for (let y = 0; y < imgHeight; y += step) {
       for (let x = 0; x < imgWidth; x += step) {
-        // 슬라이스 크기 계산 (경계 처리)
         const sliceWidth = Math.min(this.sliceSize, imgWidth - x);
         const sliceHeight = Math.min(this.sliceSize, imgHeight - y);
+        const sliceTensor = imageTensor.slice([y, x, 0], [sliceHeight, sliceWidth, channels]);
 
-        // 캔버스 생성
-        const canvas = createCanvas(sliceWidth, sliceHeight);
-        const ctx = canvas.getContext('2d');
-
-        // 이미지 그리기
-        ctx.drawImage(
-          img,
-          x,
-          y,
-          sliceWidth,
-          sliceHeight, // 원본에서 자를 영역
-          0,
-          0,
-          sliceWidth,
-          sliceHeight, // 캔버스에 그릴 영역
-        );
-
-        const sliceDataUrl = canvas.toDataURL();
+        const paddingHeight = this.sliceSize - sliceHeight;
+        const paddingWidth = this.sliceSize - sliceWidth;
+        const paddedTensor = tf.pad(sliceTensor, [
+          [0, paddingHeight], // height 패딩
+          [0, paddingWidth], // width 패딩
+          [0, 0], // channel 패딩 없음
+        ]);
 
         slices.push({
-          imageData: sliceDataUrl,
+          imageTensor: paddedTensor,
           offsetX: x,
           offsetY: y,
         });
@@ -98,7 +84,7 @@ export class SlicingModel {
     for (const slice of slices) {
       try {
         // 기존 모델로 탐지
-        const detections = await this.baseModel.detect(slice.imageData, 2000);
+        const detections = await this.baseModel.detect(slice.imageTensor, 2000);
 
         // 좌표를 전체 이미지 좌표계로 변환
         const convertedDetections = detections.map((det: DetectedObject) => ({
@@ -113,8 +99,9 @@ export class SlicingModel {
 
         allDetections.push(...convertedDetections);
       } catch (error) {
-        console.error('slice error:', error);
-        // 에러 발생한 슬라이스는 건너뛰기
+        console.log('Slice detection error:', error);
+      } finally {
+        slice.imageTensor.dispose();
       }
     }
 

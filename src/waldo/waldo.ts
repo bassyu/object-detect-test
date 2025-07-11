@@ -3,8 +3,8 @@ import * as tf from '@tensorflow/tfjs-node-gpu';
 
 import { CLASSES as WALDO_CLASSES } from './classes';
 
+const WALDO_SZIE = 640;
 const MODEL_PATH = './src/waldo/WALDO30_yolov8n_640x640/model.json';
-const SIZE = 640;
 
 export const CLASSES = WALDO_CLASSES;
 
@@ -37,8 +37,6 @@ export class WaldoObjectDetection {
 
   async load() {
     try {
-      // await tf.setBackend('cpu');
-
       // CUDA GPU 백엔드 설정
       await tf.ready();
 
@@ -62,32 +60,16 @@ export class WaldoObjectDetection {
     }
   }
 
-  private base64ToImageTensor(base64String: string): tf.Tensor3D {
-    try {
-      // base64 문자열에서 데이터 URL 프리픽스 제거
-      const base64Data = base64String.replace(/^data:image\/[a-z]+;base64,/, '');
-      // base64를 Buffer로 변환
-      const imageBuffer = Buffer.from(base64Data, 'base64');
-      // Buffer를 이미지 텐서로 디코딩
-      const imageTensor = tf.node.decodeImage(imageBuffer, 3) as tf.Tensor3D;
-
-      return imageTensor;
-    } catch (error) {
-      console.error('Why:', error);
-      throw new Error('Failed to process base64 image');
-    }
-  }
-
   private preprocessImage(imageTensor: tf.Tensor3D): tf.Tensor4D {
     return tf.tidy(() => {
       // 이미지 크기 조정
-      imageTensor = tf.image.resizeBilinear(imageTensor, [SIZE, SIZE]);
+      let processedTensor = tf.image.resizeBilinear(imageTensor, [WALDO_SZIE, WALDO_SZIE]);
 
       // 정규화 (0-255 -> 0-1)
-      imageTensor = tf.div(imageTensor, 255.0);
+      processedTensor = tf.div(imageTensor, 255.0);
 
       // 배치 차원 추가
-      const batchTensor = tf.expandDims(imageTensor, 0) as tf.Tensor4D;
+      const batchTensor = tf.expandDims(processedTensor, 0) as tf.Tensor4D;
 
       return batchTensor;
     });
@@ -163,10 +145,10 @@ export class WaldoObjectDetection {
       }
 
       if (maxScore >= minScore) {
-        const x1 = ((cx - w / 2) * originalWidth) / SIZE;
-        const y1 = ((cy - h / 2) * originalHeight) / SIZE;
-        const x2 = ((cx + w / 2) * originalWidth) / SIZE;
-        const y2 = ((cy + h / 2) * originalHeight) / SIZE;
+        const x1 = ((cx - w / 2) * originalWidth) / WALDO_SZIE;
+        const y1 = ((cy - h / 2) * originalHeight) / WALDO_SZIE;
+        const x2 = ((cx + w / 2) * originalWidth) / WALDO_SZIE;
+        const y2 = ((cy + h / 2) * originalHeight) / WALDO_SZIE;
 
         boxes.push([x1, y1, x2, y2]);
         scores.push(maxScore);
@@ -192,7 +174,7 @@ export class WaldoObjectDetection {
   }
 
   async detect(
-    base64Image: string,
+    imageTensor: tf.Tensor3D,
     maxNumBoxes = Infinity,
     minScore = 0.5,
   ): Promise<DetectedObject[]> {
@@ -201,19 +183,16 @@ export class WaldoObjectDetection {
     }
 
     try {
-      // console.time('detect');
+      console.time('detect');
 
-      // console.time('image2tensor');
-      const originalImageTensor = this.base64ToImageTensor(base64Image);
-      const originalHeight = originalImageTensor.shape[0];
-      const originalWidth = originalImageTensor.shape[1];
-      // console.timeEnd('image2tensor');
+      const originalHeight = imageTensor.shape[0];
+      const originalWidth = imageTensor.shape[1];
 
-      const inputTensor = this.preprocessImage(originalImageTensor);
+      const inputTensor = this.preprocessImage(imageTensor);
 
-      // console.time('predict');
+      console.time('execute');
       const prediction = this.model!.execute(inputTensor) as tf.Tensor;
-      // console.timeEnd('predict');
+      console.timeEnd('execute');
 
       const results = this.postprocess(
         prediction,
@@ -223,10 +202,9 @@ export class WaldoObjectDetection {
         minScore,
       );
 
-      // console.timeEnd('detect');
+      console.timeEnd('detect');
 
-      // 수동으로 텐서들을 정리
-      originalImageTensor.dispose();
+      inputTensor.dispose();
       inputTensor.dispose();
       prediction.dispose();
 
@@ -235,44 +213,6 @@ export class WaldoObjectDetection {
       console.error('Error during detection:', error);
       throw error;
     }
-  }
-
-  async detectBatch(
-    base64Images: string[],
-    maxNumBoxes = Infinity,
-    minScore = 0.5,
-  ): Promise<DetectedObject[][]> {
-    if (!this.model) {
-      throw new Error('Model not loaded. Call load() first.');
-    }
-
-    const results: DetectedObject[][] = [];
-
-    for (const base64Image of base64Images) {
-      try {
-        const detection = await this.detect(base64Image, maxNumBoxes, minScore);
-        results.push(detection);
-      } catch (error) {
-        console.error('Error detecting image in batch:', error);
-        results.push([]); // 에러 발생 시 빈 배열 추가
-      }
-    }
-
-    return results;
-  }
-
-  getModelInfo(): object {
-    if (!this.model) {
-      throw new Error('Model not loaded. Call load() first.');
-    }
-
-    return {
-      modelPath: this.modelPath,
-      backend: tf.getBackend(),
-      memory: tf.memory(),
-      inputShape: this.model.inputs[0].shape,
-      outputShape: this.model.outputs[0].shape,
-    };
   }
 
   dispose() {
