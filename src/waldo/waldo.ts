@@ -10,7 +10,7 @@ export const CLASSES = WALDO_CLASSES;
 
 export interface DetectedObject {
   bbox: [number, number, number, number]; // [x, y, width, height]
-  class: string;
+  label: string;
   score: number;
 }
 
@@ -45,19 +45,19 @@ export class WaldoObjectDetection {
       // GPU 메모리 증가 설정 (선택사항)
       if (this.gpuMemoryGrowth) {
         const gpuBackend = tf.backend();
-        if (gpuBackend && "gpuKernelBackend" in gpuBackend) {
+        if (gpuBackend && 'gpuKernelBackend' in gpuBackend) {
           // GPU 메모리 설정은 TensorFlow.js Node.js에서 자동으로 관리됨
-          console.log("GPU backend initialized");
+          console.log('GPU backend initialized');
         }
       }
 
       this.model = await tf.loadGraphModel(tf.io.fileSystem(this.modelPath));
 
       // 백엔드 정보 출력
-      console.log("Current backend:", tf.getBackend());
-      console.log("Memory info:", tf.memory());
+      console.log('Current backend:', tf.getBackend());
+      console.log('Memory info:', tf.memory());
     } catch (error) {
-      console.error("Error loading model:", error);
+      console.error('Error loading model:', error);
       throw error;
     }
   }
@@ -65,19 +65,16 @@ export class WaldoObjectDetection {
   private base64ToImageTensor(base64String: string): tf.Tensor3D {
     try {
       // base64 문자열에서 데이터 URL 프리픽스 제거
-      const base64Data = base64String.replace(
-        /^data:image\/[a-z]+;base64,/,
-        "",
-      );
+      const base64Data = base64String.replace(/^data:image\/[a-z]+;base64,/, '');
       // base64를 Buffer로 변환
-      const imageBuffer = Buffer.from(base64Data, "base64");
+      const imageBuffer = Buffer.from(base64Data, 'base64');
       // Buffer를 이미지 텐서로 디코딩
       const imageTensor = tf.node.decodeImage(imageBuffer, 3) as tf.Tensor3D;
 
       return imageTensor;
     } catch (error) {
-      console.error("Error processing base64 image:", error);
-      throw new Error("Failed to process base64 image");
+      console.error('Why:', error);
+      throw new Error('Failed to process base64 image');
     }
   }
 
@@ -96,14 +93,8 @@ export class WaldoObjectDetection {
     });
   }
 
-  private nms(
-    boxes: number[][],
-    scores: number[],
-    iouThreshold: number = 0.4,
-  ): number[] {
-    const indices = Array.from(Array(scores.length).keys()).sort(
-      (a, b) => scores[b] - scores[a],
-    );
+  private nms(boxes: number[][], scores: number[], iouThreshold: number = 0.4): number[] {
+    const indices = Array.from(Array(scores.length).keys()).sort((a, b) => scores[b] - scores[a]);
     const keep: number[] = [];
 
     while (indices.length > 0) {
@@ -192,7 +183,7 @@ export class WaldoObjectDetection {
 
       results.push({
         bbox: [x1, y1, x2 - x1, y2 - y1],
-        class: CLASSES[classIds[idx]].displayName,
+        label: CLASSES[classIds[idx]].displayName,
         score: scores[idx],
       });
     }
@@ -245,7 +236,7 @@ export class WaldoObjectDetection {
 
       return results;
     } catch (error) {
-      console.error("Error during detection:", error);
+      console.error('Error during detection:', error);
       throw error;
     }
   }
@@ -266,7 +257,7 @@ export class WaldoObjectDetection {
         const detection = await this.detect(base64Image, maxNumBoxes, minScore);
         results.push(detection);
       } catch (error) {
-        console.error("Error detecting image in batch:", error);
+        console.error('Error detecting image in batch:', error);
         results.push([]); // 에러 발생 시 빈 배열 추가
       }
     }

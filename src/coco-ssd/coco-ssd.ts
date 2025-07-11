@@ -13,7 +13,7 @@ export type ObjectDetectionBaseModel = 'mobilenet_v1' | 'mobilenet_v2' | 'lite_m
 
 export interface DetectedObject {
   bbox: [number, number, number, number]; // [x, y, width, height]
-  class: string;
+  label: string;
   score: number;
 }
 
@@ -215,7 +215,7 @@ export class ObjectDetection {
       bbox[3] = maxY - minY;
       objects.push({
         bbox,
-        class: CLASSES[classes[indexes[i]] + 1].displayName,
+        label: CLASSES[classes[indexes[i]] + 1].displayName,
         score: scores[indexes[i]],
       });
     }
