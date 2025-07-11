@@ -201,21 +201,19 @@ export class WaldoObjectDetection {
     }
 
     try {
-      console.time('detect');
-      console.group('detect');
+      // console.time('detect');
 
-      // 원본 이미지 크기 획득을 위한 임시 텐서 생성
-      console.time('image2tensor');
+      // console.time('image2tensor');
       const originalImageTensor = this.base64ToImageTensor(base64Image);
       const originalHeight = originalImageTensor.shape[0];
       const originalWidth = originalImageTensor.shape[1];
-      console.timeEnd('image2tensor');
+      // console.timeEnd('image2tensor');
 
       const inputTensor = this.preprocessImage(originalImageTensor);
 
-      console.time('predict');
+      // console.time('predict');
       const prediction = this.model!.execute(inputTensor) as tf.Tensor;
-      console.timeEnd('predict');
+      // console.timeEnd('predict');
 
       const results = this.postprocess(
         prediction,
@@ -225,9 +223,7 @@ export class WaldoObjectDetection {
         minScore,
       );
 
-      console.groupEnd();
-      console.timeEnd('detect');
-      console.log();
+      // console.timeEnd('detect');
 
       // 수동으로 텐서들을 정리
       originalImageTensor.dispose();

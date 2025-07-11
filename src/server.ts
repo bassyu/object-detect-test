@@ -1,46 +1,48 @@
-import fs from 'fs';
 import WebSocket from 'ws';
 import express from 'express';
 import http from 'http';
-// import { streamMp4ToWebSocket, currFrame } from './stream';
 import { loadWaldo } from './waldo/waldo';
-import { PassThrough } from 'stream';
 import { VideoStreamer } from './lib/video-streamer';
+import { SlicingModel } from './lib/slicing-model';
 
 const PORT = 8346;
-const IMAGE_PATH = './mock-datas/mock1.png';
+
 const VIDEO_PATH = 'https://videos.pexels.com/video-files/1263198/1263198-uhd_2560_1440_30fps.mp4';
+const VIDEO_FPS = 200;
+
+// const DETECT_SLICE_SIZE = 320;
+const DETECT_SLICE_SIZE = 480;
+// const DETECT_SLICE_SIZE = 640;
+
+const videoStreamer = new VideoStreamer(VIDEO_PATH, VIDEO_FPS);
+videoStreamer.createVideoStream();
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
-const videoStreamer = new VideoStreamer(VIDEO_PATH, 300);
-
-let currnetFrame: any = null;
 
 wss.on('connection', async (ws) => {
-  // const buf = fs.readFileSync(IMAGE_PATH);
-  // const imageDataUrl = buf.toString('base64');
+  const baseModel = await loadWaldo();
 
-  const model = await loadWaldo();
-
-  const videoStream = videoStreamer.createVideoStream();
-  videoStream.on('data', (chunk) => {
-    currnetFrame = chunk;
+  const model = new SlicingModel({
+    baseModel,
+    sliceSize: DETECT_SLICE_SIZE,
   });
 
   ws.on('message', async (message) => {
-    console.log('message', message);
-    if (!currnetFrame) {
+    const currFrame = videoStreamer.frame;
+    if (!currFrame) {
       return;
     }
 
-    const imageDataUrl = currnetFrame.toString('base64');
+    const imageDataUrl = currFrame.toString('base64');
 
-    const detections = await model.detect(imageDataUrl, 2000).catch(() => {
-      console.log('detect error');
+    console.time('all');
+    const detections = await model.detect(imageDataUrl).catch((error) => {
+      console.error('detect error');
       return [];
     });
+    console.timeEnd('all');
 
     ws.send(
       JSON.stringify({
