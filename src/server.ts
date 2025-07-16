@@ -9,12 +9,20 @@ import { base64ToTensor } from './lib/base64-to-tensor';
 
 const PORT = 8346;
 
-const VIDEO_PATH = 'https://videos.pexels.com/video-files/1263198/1263198-uhd_2560_1440_30fps.mp4';
-const VIDEO_FPS = 240;
+const VIDEO_PATH =
+  //line
+  // 'https://videos.pexels.com/video-files/2053855/2053855-uhd_2560_1440_30fps.mp4'; // 드론 밤 도로
+  'https://videos.pexels.com/video-files/1263198/1263198-uhd_2560_1440_30fps.mp4'; // 드론 낮 도로
+// 'https://videos.pexels.com/video-files/17845991/17845991-uhd_1440_2560_30fps.mp4'; // 드론 낮 세로 도로
+// 'https://videos.pexels.com/video-files/3150502/3150502-uhd_2560_1440_30fps.mp4'; // 드론 낮 가로 도로
 
-// const DETECT_SLICE_SIZE = 320;
-// const DETECT_SLICE_SIZE = 480;
-const DETECT_SLICE_SIZE = 640;
+// "https://www.shutterstock.com/shutterstock/videos/1109631067/preview/stock-footage-car-crash-in-miami-injured-driver-waiting-for-ambulance-to-arrive-people-helping-accident-victim.webm"; // 도로 옆
+// "https://videos.pexels.com/video-files/27375219/12127641_2320_1080_30fps.mp4"; // 신호등
+// "https://nearthlab-public.s3.ap-northeast-2.amazonaws.com/ai-experience-zone/accident-back.mov"; // 도로 옆 뒤
+// "https://videos.pexels.com/video-files/19216259/19216259-hd_1920_1080_30fps.mp4"; // 농구 1
+// 'https://videos.pexels.com/video-files/30514788/13074046_1920_1080_30fps.mp4'; // 농구 2
+
+const VIDEO_FPS = 240;
 
 const videoStreamer = new VideoStreamer(VIDEO_PATH, VIDEO_FPS);
 videoStreamer.createVideoStream();
@@ -25,10 +33,11 @@ const wss = new WebSocket.Server({ server });
 
 wss.on('connection', async (ws) => {
   const baseModel = await loadWaldo();
+  // const baseModel = await loadCocoSsd();
 
   const model = new SlicingModel({
     baseModel,
-    sliceSize: DETECT_SLICE_SIZE,
+    sliceSize: 400,
   });
 
   ws.on('message', async (message) => {
@@ -43,17 +52,19 @@ wss.on('connection', async (ws) => {
       return;
     }
 
-    console.time('all');
+    console.log('\non message');
+
+    console.time('slice detect');
     const detections = await model.detect(imageTensor).catch((error) => {
-      console.error('detect error');
+      console.error('detect error', error);
       return [];
     });
-    console.timeEnd('all');
+    console.timeEnd('slice detect');
 
     ws.send(
       JSON.stringify({
         frame: imageDataUrl,
-        detections: detections,
+        detections,
         timestamp: Date.now(),
       }),
     );

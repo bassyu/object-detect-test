@@ -3,8 +3,11 @@ import * as tf from '@tensorflow/tfjs-node-gpu';
 
 import { CLASSES as WALDO_CLASSES } from './classes';
 
-const WALDO_SZIE = 640;
-const MODEL_PATH = './src/waldo/WALDO30_yolov8n_640x640/model.json';
+// export const WALDO_SZIE = 416;
+// const MODEL_PATH = './models/WALDO30_yolov8n_416x416_saved_model';
+
+export const WALDO_SZIE = 640;
+const MODEL_PATH = './models/WALDO30_yolov8n_640x640_saved_model';
 
 export const CLASSES = WALDO_CLASSES;
 
@@ -27,7 +30,7 @@ export async function loadWaldo(config: ModelConfig = {}) {
 
 export class WaldoObjectDetection {
   private modelPath: string;
-  private model: tf.GraphModel | null = null;
+  private model: any | tf.GraphModel | null = null;
   private gpuMemoryGrowth: boolean;
 
   constructor(modelUrl?: string, gpuMemoryGrowth = true) {
@@ -49,7 +52,11 @@ export class WaldoObjectDetection {
         }
       }
 
-      this.model = await tf.loadGraphModel(tf.io.fileSystem(this.modelPath));
+      // this.model = await tf.loadGraphModel(tf.io.fileSystem(this.modelPath));
+      // this.model = await tf.loadGraphModel(
+      //   tf.io.fileSystem('./src/waldo/WALDO30_yolov8n_416x416_web_model/model.json'),
+      // );
+      this.model = await tf.node.loadSavedModel(this.modelPath);
 
       // 백엔드 정보 출력
       console.log('Current backend:', tf.getBackend());
@@ -66,7 +73,7 @@ export class WaldoObjectDetection {
       let processedTensor = tf.image.resizeBilinear(imageTensor, [WALDO_SZIE, WALDO_SZIE]);
 
       // 정규화 (0-255 -> 0-1)
-      processedTensor = tf.div(imageTensor, 255.0);
+      processedTensor = tf.div(processedTensor, 255.0);
 
       // 배치 차원 추가
       const batchTensor = tf.expandDims(processedTensor, 0) as tf.Tensor4D;
@@ -183,16 +190,17 @@ export class WaldoObjectDetection {
     }
 
     try {
-      console.time('detect');
+      // console.time('detect');
 
       const originalHeight = imageTensor.shape[0];
       const originalWidth = imageTensor.shape[1];
 
       const inputTensor = this.preprocessImage(imageTensor);
 
-      console.time('execute');
-      const prediction = this.model!.execute(inputTensor) as tf.Tensor;
-      console.timeEnd('execute');
+      // console.time('execute');
+      // const prediction = this.model!.execute(inputTensor) as tf.Tensor;
+      const prediction = this.model!.predict(inputTensor) as tf.Tensor;
+      // console.timeEnd('execute');
 
       const results = this.postprocess(
         prediction,
@@ -202,7 +210,7 @@ export class WaldoObjectDetection {
         minScore,
       );
 
-      console.timeEnd('detect');
+      // console.timeEnd('detect');
 
       inputTensor.dispose();
       inputTensor.dispose();

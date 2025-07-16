@@ -33,10 +33,11 @@ export class SlicingModel {
   async detect(imageTensor: tf.Tensor3D): Promise<DetectedObject[]> {
     // 1. 이미지 슬라이싱
     const slices = await this.sliceImage(imageTensor);
-    console.log('length: ', slices.length);
+    const slicesAndOrigin = slices.concat([{ imageTensor, offsetX: 0, offsetY: 0 }]);
+    console.log('slices count: ', slicesAndOrigin.length);
 
     // 2. 각 슬라이스에 모델 적용
-    const allDetections = await this.detectOnSlices(slices);
+    const allDetections = await this.detectOnSlices(slicesAndOrigin);
 
     // 3. NMS로 중복 제거
     const finalDetections = this.mergeDetections(allDetections);

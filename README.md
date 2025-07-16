@@ -1,4 +1,5 @@
 # object-detect-test
 
-추적이 잘 되는지?
-스트리밍 어떻게 할지?
+$ source .venv/bin/activate
+$ yolo export model=models/WALDO30_yolov8n_640x640.pt format=tfjs
+$ yolo export model=models/WALDO30_yolov8n_416x416.pt format=tfjs

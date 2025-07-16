@@ -41,22 +41,11 @@ export interface ModelConfig {
 
 export async function loadCocoSsd(config: ModelConfig = {}) {
   if (tf == null) {
-    throw new Error(
-      `Cannot find TensorFlow.js. If you are using a <script> tag, please ` +
-        `also include @tensorflow/tfjs on the page before using this model.`,
-    );
+    throw new Error('Cannot find TensorFlow.js.');
   }
   const base = config.base ?? 'lite_mobilenet_v2';
   const modelUrl = config.modelUrl;
   const gpuMemoryGrowth = config.gpuMemoryGrowth ?? true;
-
-  if (!['mobilenet_v1', 'mobilenet_v2', 'lite_mobilenet_v2'].includes(base)) {
-    throw new Error(
-      `ObjectDetection constructed with invalid base model ` +
-        `${base}. Valid names are 'mobilenet_v1',` +
-        ` 'mobilenet_v2' and 'lite_mobilenet_v2'.`,
-    );
-  }
 
   const objectDetection = new ObjectDetection(base, modelUrl, gpuMemoryGrowth);
   await objectDetection.load();
@@ -109,34 +98,14 @@ export class ObjectDetection {
     }
   }
 
-  private base64ToImageTensor(base64String: string): tf.Tensor3D {
-    try {
-      // base64 문자열에서 데이터 URL 프리픽스 제거
-      const base64Data = base64String.replace(/^data:image\/[a-z]+;base64,/, '');
-      // base64를 Buffer로 변환
-      const imageBuffer = Buffer.from(base64Data, 'base64');
-      // Buffer를 이미지 텐서로 디코딩
-      const imageTensor = tf.node.decodeImage(imageBuffer, 3) as tf.Tensor3D;
-
-      return imageTensor;
-    } catch (error) {
-      console.error('Error processing base64 image:', error);
-      throw new Error('Failed to process base64 image');
-    }
-  }
-
   private async infer(
-    base64Image: string,
+    imageTensor: tf.Tensor3D,
     maxNumBoxes: number,
     minScore: number,
   ): Promise<DetectedObject[]> {
     try {
       // console.time('detect');
       // console.group('detect');
-
-      // console.time('image2tensor');
-      const imageTensor = this.base64ToImageTensor(base64Image);
-      // console.timeEnd('image2tensor');
 
       const batched = tf.expandDims(imageTensor, 0);
 
@@ -244,8 +213,12 @@ export class ObjectDetection {
     return [maxes, classes];
   }
 
-  async detect(base64Image: string, maxNumBoxes = 20, minScore = 0.5): Promise<DetectedObject[]> {
-    return this.infer(base64Image, maxNumBoxes, minScore);
+  async detect(
+    imageTensor: tf.Tensor3D,
+    maxNumBoxes = 20,
+    minScore = 0.5,
+  ): Promise<DetectedObject[]> {
+    return this.infer(imageTensor, maxNumBoxes, minScore);
   }
 
   dispose() {
